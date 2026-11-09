@@ -2,7 +2,7 @@
 // `npm run build` fails while any placeholder remains (see scripts/build-extension.mjs).
 export const environment = {
   production: true,
-  apiUrl: 'REPLACE_WITH_PRODUCTION_API_URL', // e.g. https://api.example.com/api/v1
+  apiUrl: 'https://arzibaaz.onrender.com/api/v1',
   // Public Supabase values only. NEVER put the service-role key in the extension.
   supabaseUrl: 'https://uynwtnwlzskkafizyhne.supabase.co',
   supabaseAnonKey:
