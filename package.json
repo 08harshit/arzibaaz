@@ -1,0 +1,20 @@
+{
+  "name": "arzi-baaz",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @arzi-baaz/api dev",
+    "dev:extension": "pnpm --filter @arzi-baaz/extension dev",
+    "build:api": "pnpm --filter @arzi-baaz/api build",
+    "build:extension": "pnpm --filter @arzi-baaz/extension build",
+    "build:contracts": "pnpm --filter @arzi-baaz/contracts build",
+    "build": "pnpm build:contracts && pnpm build:api && pnpm build:extension",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,json,md}\" --ignore-path .prettierignore"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

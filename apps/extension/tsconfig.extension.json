@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/out-tsc",
+    "types": ["node", "chrome"]
+  },
+  "files": [
+    "src/extension/background/service-worker.ts",
+    "src/extension/content/scanner.ts",
+    "src/extension/content/field-extractor.ts",
+    "src/extension/content/classifier.ts",
+    "src/extension/content/autofill.ts",
+    "src/extension/content/form-observer.ts"
+  ]
+}
