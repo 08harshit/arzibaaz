@@ -265,9 +265,16 @@ export class ProfileApiService {
     );
   }
 
+  /** The API stores these as answerLength/answerTone/answerStyle, so map from the contract names. */
   async updatePreferences(dto: Partial<AnswerPreferences>): Promise<AnswerPreferences> {
+    const body = {
+      answerLength: dto.length,
+      answerTone: dto.tone,
+      answerStyle: dto.style,
+      additionalInstructions: dto.additionalInstructions,
+    };
     return firstValueFrom(
-      this.http.patch<AnswerPreferences>(`${this.baseUrl}/preferences`, dto, {
+      this.http.patch<AnswerPreferences>(`${this.baseUrl}/preferences`, body, {
         headers: this.getHeaders(),
       }),
     );

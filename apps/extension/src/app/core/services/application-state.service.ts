@@ -23,6 +23,8 @@ export interface QuestionItem {
   currentValue?: string;
   /** The answer came straight from the user's profile, not the AI. */
   fromProfile?: boolean;
+  /** The answer is the user's own saved answer for this exact question. */
+  fromLibrary?: boolean;
   generatedAnswer?: GeneratedAnswer & { id?: string };
   isGenerating?: boolean;
   isRefining?: boolean;

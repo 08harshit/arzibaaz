@@ -18,20 +18,25 @@ import { AuthService } from '../services/auth.service';
         ></span>
       </div>
       <div class="navbar-links">
-        <a routerLink="/application" routerLinkActive="active" title="Application">
-          <span class="nav-icon">📋</span>
+        <a routerLink="/application" routerLinkActive="active" title="Fill a form">
+          <span class="nav-icon">⚡</span>
+          <span class="nav-label">Fill</span>
         </a>
         <a routerLink="/profile" routerLinkActive="active" title="Profile">
           <span class="nav-icon">👤</span>
+          <span class="nav-label">Profile</span>
         </a>
         <a routerLink="/answer-library" routerLinkActive="active" title="Answer Library">
           <span class="nav-icon">📚</span>
+          <span class="nav-label">Library</span>
         </a>
         <a routerLink="/application-history" routerLinkActive="active" title="Application History">
           <span class="nav-icon">🕘</span>
+          <span class="nav-label">History</span>
         </a>
         <a routerLink="/settings" routerLinkActive="active" title="Settings">
           <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Settings</span>
         </a>
       </div>
     </nav>
@@ -41,7 +46,9 @@ import { AuthService } from '../services/auth.service';
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 8px 12px;
       background: #1a73e8;
       color: white;
     }
@@ -84,9 +91,11 @@ import { AuthService } from '../services/auth.service';
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
+      width: 46px;
+      height: 44px;
+      flex-direction: column;
+      gap: 1px;
+      border-radius: 10px;
       text-decoration: none;
       transition: background 150ms ease;
       color: white;
@@ -101,6 +110,12 @@ import { AuthService } from '../services/auth.service';
 
     .nav-icon {
       font-size: 16px;
+    }
+
+    .nav-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
     }
   `],
 })

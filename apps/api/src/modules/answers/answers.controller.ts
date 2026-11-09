@@ -70,6 +70,32 @@ export class AnswersController {
     );
   }
 
+  @Post('library')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Save an answer typed by the user for a question' })
+  async createLibraryAnswer(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    dto: {
+      content: string;
+      questionText: string;
+      category?: QuestionCategory;
+      tags?: string[];
+    },
+  ) {
+    if (!dto.content?.trim() || !dto.questionText?.trim()) {
+      throw new BadRequestException('content and questionText are required');
+    }
+    return this.answersService.createSavedAnswer(
+      req.user.id,
+      req.accessToken,
+      dto.content.trim().slice(0, 5000),
+      dto.questionText.trim().slice(0, 300),
+      dto.category ?? 'unknown',
+      dto.tags,
+    );
+  }
+
   @Get('library')
   @ApiOperation({ summary: 'List saved answers from library' })
   async getLibrary(

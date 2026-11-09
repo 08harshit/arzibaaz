@@ -4,6 +4,16 @@ import type { GeneratedAnswer } from './answer';
 /**
  * Per-field autofill result with success/failure and error details.
  */
+/** How a field is marked on the page after autofill. */
+export type FieldMarkKind = 'filled' | 'check' | 'missing';
+
+export interface FieldMark {
+  fieldId: string;
+  kind: FieldMarkKind;
+  /** Shown as a tooltip on the marked field. */
+  note?: string;
+}
+
 export interface FieldFillResult {
   fieldId: string;
   label: string;
@@ -26,6 +36,8 @@ export type ExtensionMessage =
   | { type: 'FILL_APPROVED_FIELDS'; payload: Array<{ fieldId: string; value: string; label: string }> }
   | { type: 'FIELD_FILL_RESULT'; payload: { fieldId: string; success: boolean } }
   | { type: 'FILL_RESULTS'; payload: FieldFillResult[] }
+  | { type: 'HIGHLIGHT_FIELDS'; payload: FieldMark[] }
+  | { type: 'CLEAR_HIGHLIGHTS' }
   | { type: 'ANSWERS_GENERATED'; payload: GeneratedAnswer[] }
   | { type: 'AUTH_STATE_CHANGED'; payload: { isAuthenticated: boolean } }
   | { type: 'GET_AUTH_TOKEN' }

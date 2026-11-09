@@ -3,6 +3,29 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 
+/** Turns raw Supabase errors into something a person can act on. */
+function friendlyAuthError(message: string): string {
+  if (/invalid login credentials/i.test(message)) {
+    return 'Wrong email or password. If you just signed up, confirm your email first (check spam).';
+  }
+  if (/email not confirmed/i.test(message)) {
+    return 'Your email is not confirmed yet. Open the confirmation link we emailed you, then sign in.';
+  }
+  if (/rate limit|too many|over_email_send_rate_limit/i.test(message)) {
+    return 'Too many emails were sent. Wait about an hour before trying again, or sign in if you already have an account.';
+  }
+  if (/already (been )?registered|already exists/i.test(message)) {
+    return 'This email already has an account. Switch to Sign in.';
+  }
+  if (/password should be at least|weak password/i.test(message)) {
+    return 'Choose a longer password (at least 6 characters).';
+  }
+  if (/failed to fetch|network|load failed/i.test(message)) {
+    return 'Cannot reach the server. Check your internet connection and try again.';
+  }
+  return message;
+}
+
 @Component({
   selector: 'ab-auth',
   standalone: true,
@@ -334,15 +357,15 @@ export class AuthComponent {
       if (this.isLoginMode()) {
         const { error } = await this.auth.signInWithPassword(this.email, this.password);
         if (error) {
-          this.errorMessage.set(error.message);
+          this.errorMessage.set(friendlyAuthError(error.message));
         }
       } else {
         const { error } = await this.auth.signUp(this.email, this.password);
         if (error) {
-          this.errorMessage.set(error.message);
+          this.errorMessage.set(friendlyAuthError(error.message));
         } else {
           this.successMessage.set(
-            'Account created! Check your email for confirmation if required, or sign in.',
+            'Account created. Open the confirmation link we emailed you, then come back and sign in.',
           );
           this.isLoginMode.set(true);
         }
@@ -358,7 +381,7 @@ export class AuthComponent {
     try {
       const { error } = await this.auth.signInWithGoogle();
       if (error) {
-        this.errorMessage.set(error.message);
+        this.errorMessage.set(friendlyAuthError(error.message));
       }
     } finally {
       this.loading.set(false);

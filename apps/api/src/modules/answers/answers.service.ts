@@ -211,6 +211,41 @@ export class AnswersService {
   }
 
   /**
+   * Save an answer the user typed themselves (for a field we had no data for) so the same
+   * question is answered automatically next time.
+   */
+  async createSavedAnswer(
+    userId: string,
+    accessToken: string,
+    content: string,
+    questionText: string,
+    category: QuestionCategory,
+    tags: string[] = [],
+  ): Promise<SavedAnswer> {
+    const client = this.supabase.getAuthenticatedClient(accessToken);
+
+    const { data: saved, error } = await client
+      .from('saved_answers')
+      .insert({
+        user_id: userId,
+        content,
+        question_text: questionText,
+        category,
+        tags,
+        title: questionText.slice(0, 80),
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (error || !saved) {
+      this.logger.error(`Failed to create saved answer: ${error?.message}`);
+      throw new Error('Could not save answer');
+    }
+
+    return this.toSavedAnswer(saved);
+  }
+
+  /**
    * Retrieve the user's saved answers (soft-deleted rows excluded),
    * optionally filtered by category and a keyword search.
    */

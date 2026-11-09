@@ -28,4 +28,4 @@ export type {
 } from './answer';
 export type { AnalyzeJobRequest, AnalyzeJobResponse } from './job';
 export { isExtensionMessage } from './messages';
-export type { ExtensionMessage, FieldFillResult } from './messages';
+export type { ExtensionMessage, FieldFillResult, FieldMark, FieldMarkKind } from './messages';

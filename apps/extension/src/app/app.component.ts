@@ -18,15 +18,16 @@ import { NavbarComponent } from './core/navbar/navbar.component';
     .extension-shell {
       display: flex;
       flex-direction: column;
-      width: 380px;
-      min-height: 600px;
+      width: 100%;
+      height: 100vh;
       overflow: hidden;
     }
 
     .extension-content {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
-      padding: 16px;
+      padding: 12px;
     }
   `],
 })

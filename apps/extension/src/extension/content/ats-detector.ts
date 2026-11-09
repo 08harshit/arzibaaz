@@ -63,10 +63,14 @@ export function findPlatformLabel(el: HTMLElement, platform: ATSPlatform): strin
   let labelSelector = '';
 
   switch (platform) {
-    case 'lever':
-      container = el.closest('li.application-question, label');
-      labelSelector = '.application-label';
-      break;
+    case 'lever': {
+      // Custom questions live in li.application-question; the EEO survey wraps its fields in a <label>.
+      // Check the list item first: a radio's nearest <label> is its own option, which has no question text.
+      const item = el.closest('li.application-question');
+      const found = item?.querySelector('.application-label') ?? el.closest('label')?.querySelector('.application-label');
+      const text = found ? ownText(found) : '';
+      return text || undefined;
+    }
     case 'ashby':
       container = el.closest('.ashby-application-form-field-entry, [class*="fieldEntry"]');
       labelSelector = 'label, legend';

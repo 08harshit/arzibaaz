@@ -16,6 +16,7 @@ import { extractFields, getRegisteredElement, ownsField } from './field-extracto
 import { classify } from './classifier';
 import { FormObserver } from './form-observer';
 import { fillElement, isCombobox, type FillOutcome } from './autofill';
+import { applyMarks, clearMarks } from './highlighter';
 
 const isTopFrame = window === window.top;
 
@@ -85,6 +86,23 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         sendResponse(response);
       });
       return true;
+    }
+
+    case 'HIGHLIGHT_FIELDS': {
+      const owned = msg.payload.filter((m) => ownsField(m.fieldId));
+      if (owned.length === 0) return false;
+      const resolve = (fieldId: string) => {
+        const question = detectedFields.find((f) => f.id === fieldId);
+        return getRegisteredElement(fieldId) ?? (question ? findFormElementByQuestion(question) : null);
+      };
+      // Bring the first field that needs attention into view; the rest are visible as the user scrolls.
+      applyMarks(owned, resolve)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+
+    case 'CLEAR_HIGHLIGHTS': {
+      clearMarks();
+      return false;
     }
 
     default:

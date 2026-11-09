@@ -1,5 +1,5 @@
 import { Injectable, NgZone, inject, signal } from '@angular/core';
-import type { ApplicationQuestion, ExtensionMessage, FieldFillResult } from '@arzi-baaz/contracts';
+import type { ApplicationQuestion, ExtensionMessage, FieldFillResult, FieldMark } from '@arzi-baaz/contracts';
 import { isExtensionMessage } from '@arzi-baaz/contracts';
 
 interface FillRequest {
@@ -92,6 +92,16 @@ export class FormFillService {
           this.finishFill();
         });
     });
+  }
+
+  /** Marks fields on the page: green = filled, amber = double-check, red = needs you. */
+  highlight(marks: FieldMark[]): void {
+    if (marks.length === 0) return;
+    chrome.runtime.sendMessage({ type: 'HIGHLIGHT_FIELDS', payload: marks } satisfies ExtensionMessage).catch(() => {});
+  }
+
+  clearHighlights(): void {
+    chrome.runtime.sendMessage({ type: 'CLEAR_HIGHLIGHTS' } satisfies ExtensionMessage).catch(() => {});
   }
 
   private handleMessage(msg: ExtensionMessage): void {

@@ -177,6 +177,45 @@ export class AiApiService {
     );
   }
 
+  // ── Missing fields: answer once, reuse everywhere ──────────────
+
+  /** Saves an answer the user typed for a question, so the same question is filled automatically next time. */
+  async createLibraryAnswer(
+    content: string,
+    questionText: string,
+    category: QuestionCategory = 'unknown',
+  ): Promise<SavedAnswer> {
+    return firstValueFrom(
+      this.http.post<SavedAnswer>(
+        `${this.baseUrl}/answers/library`,
+        { content, questionText, category },
+        { headers: this.getHeaders() },
+      ),
+    );
+  }
+
+  /** Remembers form fields that could not be filled (labels only, never answers). */
+  async recordFieldGaps(
+    gaps: Array<{
+      label: string;
+      canonicalField?: string;
+      inputType?: string;
+      host?: string;
+      reason: 'no_answer' | 'fill_failed' | 'profile_missing';
+    }>,
+  ): Promise<void> {
+    if (gaps.length === 0) return;
+    await firstValueFrom(
+      this.http.post(`${this.baseUrl}/field-gaps`, { gaps }, { headers: this.getHeaders() }),
+    );
+  }
+
+  async resolveFieldGap(label: string): Promise<void> {
+    await firstValueFrom(
+      this.http.post(`${this.baseUrl}/field-gaps/resolve`, { label }, { headers: this.getHeaders() }),
+    );
+  }
+
   /** Builds an encoded query string, skipping empty values. */
   private query(params: Record<string, string | number | undefined>): string {
     const parts = Object.entries(params)

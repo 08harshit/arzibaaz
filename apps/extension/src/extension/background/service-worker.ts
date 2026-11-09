@@ -54,7 +54,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'FILL_FIELD':
-    case 'FILL_APPROVED_FIELDS': {
+    case 'FILL_APPROVED_FIELDS':
+    case 'HIGHLIGHT_FIELDS':
+    case 'CLEAR_HIGHLIGHTS': {
       // Forward fill instructions to the active tab
       forwardToActiveTab(message).catch(console.error);
       return false;

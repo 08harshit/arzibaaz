@@ -8,15 +8,46 @@ import { FormFillService } from '../../core/services/form-fill.service';
 import { ProfileApiService } from '../../core/services/profile-api.service';
 import { ApplicationStateService, type QuestionItem } from '../../core/services/application-state.service';
 import { AuthComponent } from '../auth/auth.component';
-import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi-baaz/contracts';
+import type {
+  FieldMark,
+  GenerateAnswerRequest,
+  JobContext,
+  LibrarySuggestion,
+  PersonalProfile,
+} from '@arzi-baaz/contracts';
+
+/** Personal fields that live in the profile; answering one of these updates the profile. */
+const PROFILE_FIELD_KEYS: Record<string, keyof PersonalProfile> = {
+  phone: 'phone',
+  location: 'location',
+  country: 'country',
+  linkedinUrl: 'linkedinUrl',
+  githubUrl: 'githubUrl',
+  portfolioUrl: 'portfolioUrl',
+};
+
+/** A field that is still empty after autofill, with the inline "answer once" input. */
+interface SummaryItem {
+  fieldId: string;
+  label: string;
+  reason: string;
+  consent: boolean;
+  failed: boolean;
+  profileGap: boolean;
+  canonicalField?: string;
+  inputType?: string;
+  options?: string[];
+  draft: string;
+  saving: boolean;
+  error?: string;
+}
 
 interface FillSummary {
   total: number;
   filled: number;
   alreadyFilled: number;
   check: string[];
-  manual: Array<{ label: string; reason: string }>;
-  failed: Array<{ label: string; reason: string }>;
+  todo: SummaryItem[];
 }
 
 @Component({
@@ -28,6 +59,113 @@ interface FillSummary {
       @if (!auth.isAuthenticated()) {
         <ab-auth />
       } @else {
+        @if (feedbackMessage()) {
+          <div class="feedback-toast" [class.error]="isError()">
+            {{ feedbackMessage() }}
+          </div>
+        }
+
+        <!-- One-click fill -->
+        <div class="fill-card">
+          <div class="detect-text">
+            <p class="detect-title">Fill this application form</p>
+            <p class="detect-hint">
+              @if (stage()) {
+                {{ stage() }}
+                @if (slowHint()) {
+                  <br />The free server is waking up. The first request can take up to a minute.
+                }
+              } @else {
+                One click: finds the fields, uses your profile and saved answers, writes the rest, and fills the page. Nothing is submitted.
+              }
+            </p>
+            @if (readiness(); as r) {
+              <p class="ready" [class.warn]="r.facts === 0">
+                @if (r.facts === 0) {
+                  Your profile has no facts yet, so answers will be empty.
+                  <button class="text-btn" (click)="goToProfile()">Add them</button>
+                } @else {
+                  Profile ready: {{ r.facts }} facts, {{ r.skills }} skills
+                }
+              </p>
+            }
+          </div>
+          <button class="primary-btn fill-btn" (click)="fillWholeForm()" [disabled]="filling()">
+            @if (filling()) {
+              <span class="spinner-sm"></span> Working...
+            } @else {
+              ⚡ Fill this form
+            }
+          </button>
+        </div>
+
+        @if (fillSummary(); as sum) {
+          <div class="summary-card">
+            <p class="sum-title">✓ Filled {{ sum.filled }} of {{ sum.total }} fields</p>
+            <p class="legend">
+              Marked on the page:
+              <span class="dot g"></span>filled
+              <span class="dot a"></span>double-check
+              <span class="dot r"></span>needs you
+            </p>
+            @if (sum.alreadyFilled > 0) {
+              <p class="sum-line">{{ sum.alreadyFilled }} already filled, left as they were.</p>
+            }
+            @if (sum.check.length > 0) {
+              <p class="sum-line warn">Double-check these (the AI was unsure):</p>
+              <ul>
+                @for (c of sum.check; track c) {
+                  <li>{{ c }}</li>
+                }
+              </ul>
+            }
+            @if (sum.todo.length > 0) {
+              <p class="sum-line">Needs you. Answer once and it is filled automatically next time:</p>
+              @for (m of sum.todo; track m.fieldId) {
+                <div class="gap-row">
+                  <p class="gap-label">{{ m.label }} <span class="why">- {{ m.reason }}</span></p>
+                  @if (!m.consent) {
+                    <div class="gap-input">
+                      @if (m.options && m.options.length > 0) {
+                        <select [(ngModel)]="m.draft">
+                          <option value="">Choose...</option>
+                          @for (o of m.options; track o) {
+                            <option [value]="o">{{ o }}</option>
+                          }
+                        </select>
+                      } @else {
+                        <input type="text" [(ngModel)]="m.draft" placeholder="Your answer" (keyup.enter)="saveAndFill(m)" />
+                      }
+                      <button class="gap-btn" (click)="saveAndFill(m)" [disabled]="!m.draft.trim() || m.saving">
+                        @if (m.saving) {
+                          <span class="spinner-sm"></span>
+                        } @else {
+                          Save &amp; fill
+                        }
+                      </button>
+                    </div>
+                    @if (m.error) {
+                      <p class="gap-err">{{ m.error }}</p>
+                    }
+                  }
+                </div>
+              }
+            }
+            <div class="sum-actions">
+              <button class="text-btn" (click)="clearMarks()">Clear highlights</button>
+            </div>
+            <p class="sum-note">Check the page, then submit it yourself.</p>
+          </div>
+        }
+
+        <div class="detail-toggle">
+          <button class="text-btn" (click)="showDetails.set(!showDetails())">
+            {{ showDetails() ? 'Hide' : 'Show' }} job details, fields and manual tools
+          </button>
+          <button class="text-btn" (click)="detectFields()" [disabled]="formFill.scanning()">Detect only</button>
+        </div>
+
+        @if (showDetails()) {
         <!-- Job Context Card -->
         <div class="card job-card">
           <div class="card-header">
@@ -72,75 +210,6 @@ interface FillSummary {
           }
         </div>
 
-        @if (feedbackMessage()) {
-          <div class="feedback-toast" [class.error]="isError()">
-            {{ feedbackMessage() }}
-          </div>
-        }
-
-        <!-- One-click fill -->
-        <div class="fill-card">
-          <div class="detect-text">
-            <p class="detect-title">Fill this application form</p>
-            <p class="detect-hint">
-              @if (stage()) {
-                {{ stage() }}
-              } @else {
-                One click: finds the fields, uses your profile, writes the rest, and fills the page. Nothing is submitted.
-              }
-            </p>
-          </div>
-          <button class="primary-btn fill-btn" (click)="fillWholeForm()" [disabled]="filling()">
-            @if (filling()) {
-              <span class="spinner-sm"></span> Working...
-            } @else {
-              ⚡ Fill this form
-            }
-          </button>
-        </div>
-
-        @if (fillSummary(); as sum) {
-          <div class="summary-card">
-            <p class="sum-title">✓ Filled {{ sum.filled }} of {{ sum.total }} fields</p>
-            @if (sum.alreadyFilled > 0) {
-              <p class="sum-line">{{ sum.alreadyFilled }} already filled, left as they were.</p>
-            }
-            @if (sum.check.length > 0) {
-              <p class="sum-line warn">Double-check these (the AI was unsure):</p>
-              <ul>
-                @for (c of sum.check; track c) {
-                  <li>{{ c }}</li>
-                }
-              </ul>
-            }
-            @if (sum.manual.length > 0) {
-              <p class="sum-line">Fill these yourself:</p>
-              <ul>
-                @for (m of sum.manual; track m.label) {
-                  <li>{{ m.label }} <span class="why">- {{ m.reason }}</span></li>
-                }
-              </ul>
-            }
-            @if (sum.failed.length > 0) {
-              <p class="sum-line err">Could not fill:</p>
-              <ul>
-                @for (f of sum.failed; track f.label) {
-                  <li>{{ f.label }} <span class="why">- {{ f.reason }}</span></li>
-                }
-              </ul>
-            }
-            <p class="sum-note">Check the page, then submit it yourself.</p>
-          </div>
-        }
-
-        <div class="detail-toggle">
-          <button class="text-btn" (click)="showDetails.set(!showDetails())">
-            {{ showDetails() ? 'Hide' : 'Show' }} fields and manual tools
-          </button>
-          <button class="text-btn" (click)="detectFields()" [disabled]="formFill.scanning()">Detect only</button>
-        </div>
-
-        @if (showDetails()) {
         <!-- Add Question Input -->
         <div class="add-q-card">
           <div class="input-row">
@@ -200,6 +269,9 @@ interface FillSummary {
                       <span class="field-chip">{{ q.options?.length ? 'choice · ' + q.options!.length : q.inputType || q.elementType }}</span>
                       @if (q.required) {
                         <span class="field-chip required">required</span>
+                      }
+                      @if (q.fromLibrary) {
+                        <span class="field-chip ok">from your saved answers</span>
                       }
                       @if (q.fromProfile) {
                         <span class="field-chip ok">from your profile</span>
@@ -849,6 +921,40 @@ interface FillSummary {
       to { transform: rotate(360deg); }
     }
 
+    .ready { margin: 4px 0 0; font-size: 11px; color: #137333; }
+    .ready.warn { color: #b06000; }
+    .legend { margin: 0 0 6px; font-size: 10px; color: #5f6368; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-left: 6px; }
+    .dot.g { background: #1e8e3e; }
+    .dot.a { background: #f29900; }
+    .dot.r { background: #d93025; }
+    .gap-row { padding: 6px 0; border-top: 1px solid #f1f3f4; }
+    .gap-label { margin: 0 0 4px; font-size: 12px; }
+    .gap-input { display: flex; gap: 6px; }
+    .gap-input input, .gap-input select {
+      flex: 1;
+      min-width: 0;
+      padding: 5px 8px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .gap-btn {
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .gap-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .gap-err { margin: 4px 0 0; font-size: 11px; color: #c5221f; }
+    .sum-actions { margin-top: 8px; }
+
     .fill-card {
       display: flex;
       justify-content: space-between;
@@ -1021,6 +1127,8 @@ export class ApplicationComponent implements OnInit {
   readonly stage = signal<string | null>(null);
   readonly showDetails = signal<boolean>(false);
   readonly fillSummary = signal<FillSummary | null>(null);
+  readonly slowHint = signal<boolean>(false);
+  readonly readiness = signal<{ facts: number; skills: number } | null>(null);
 
   newQuestionText = '';
 
@@ -1053,6 +1161,7 @@ export class ApplicationComponent implements OnInit {
   }
 
   ngOnInit() {
+    void this.loadReadiness();
     void this.loadSuggestions();
 
     // Returning from Answer Review with "Proceed to Autofill".
@@ -1116,13 +1225,19 @@ export class ApplicationComponent implements OnInit {
   }
 
   /**
-   * One click: detect the form, take personal fields from the profile, write the rest with the AI,
-   * approve everything that has an answer, and fill the page. The form is never submitted.
+   * One click: detect the form, take personal fields from the profile and exact saved answers from the
+   * library, write the rest with the AI, approve everything that has an answer, fill the page, and mark
+   * the result on the page. The form is never submitted.
    */
   async fillWholeForm() {
     if (this.filling()) return;
     this.filling.set(true);
+    this.slowHint.set(false);
     this.fillSummary.set(null);
+    this.formFill.clearHighlights();
+
+    // The free hosting tier sleeps when idle; tell the user why the first step can take a while.
+    const slowTimer = setTimeout(() => this.slowHint.set(true), 12_000);
 
     try {
       this.stage.set('Detecting fields...');
@@ -1147,7 +1262,7 @@ export class ApplicationComponent implements OnInit {
       // A few at a time: faster than one by one, gentle enough for the AI provider's rate limits.
       const worker = async () => {
         for (let q = queue.shift(); q; q = queue.shift()) {
-          await this.generateAnswer(q);
+          if (!(await this.useExactLibraryMatch(q))) await this.generateAnswer(q);
           done++;
           this.stage.set(`Writing answers ${done}/${total}...`);
         }
@@ -1163,10 +1278,31 @@ export class ApplicationComponent implements OnInit {
 
       this.stage.set('Filling the form...');
       await this.autofillApproved();
-      this.fillSummary.set(this.buildSummary());
+
+      const summary = this.buildSummary();
+      this.fillSummary.set(summary);
+      this.formFill.highlight(this.buildMarks());
+      void this.logGaps(summary);
     } finally {
+      clearTimeout(slowTimer);
+      this.slowHint.set(false);
       this.filling.set(false);
       this.stage.set(null);
+    }
+  }
+
+  /** A saved answer for the very same question is the user's own text, so it is used without asking the AI. */
+  private async useExactLibraryMatch(q: QuestionItem): Promise<boolean> {
+    try {
+      const [best] = await this.aiApi.suggestLibraryAnswers(q.question);
+      if (!best || best.score < 0.95) return false;
+
+      const answer = await this.aiApi.useLibraryAnswer(best.answerId, q.question, q.id);
+      q.generatedAnswer = { ...answer, requiresReview: false };
+      q.fromLibrary = true;
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -1174,21 +1310,165 @@ export class ApplicationComponent implements OnInit {
     const fields = this.questions.filter((q) => q.fieldId);
     const filled = fields.filter((q) => q.fillResult?.success);
 
+    const todo: SummaryItem[] = fields
+      .filter((q) => !q.fillResult?.success && !q.currentValue)
+      .map((q) => {
+        const consent = this.isConsentField(q);
+        const failure = q.fillResult && !q.fillResult.success ? q.fillResult.error : undefined;
+        const profileGap =
+          !!q.canonicalField && q.canonicalField in PROFILE_FIELD_KEYS && !this.state.profileValueFor(q.canonicalField);
+        return {
+          fieldId: q.fieldId as string,
+          label: q.question,
+          reason: consent
+            ? 'consent: tick it yourself'
+            : failure
+              ? `could not fill: ${failure}`
+              : profileGap
+                ? 'missing in your profile'
+                : 'no answer available yet',
+          consent,
+          failed: !!failure,
+          profileGap,
+          canonicalField: q.canonicalField,
+          inputType: q.inputType,
+          options: q.options,
+          draft: '',
+          saving: false,
+        };
+      });
+
     return {
       total: fields.length,
       filled: filled.length,
       alreadyFilled: fields.filter((q) => q.currentValue && !q.generatedAnswer).length,
       check: filled.filter((q) => q.generatedAnswer?.requiresReview && !q.fromProfile).map((q) => q.question),
-      manual: fields
-        .filter((q) => !q.fillResult && !q.currentValue)
-        .map((q) => ({
-          label: q.question,
-          reason: this.isConsentField(q) ? 'consent: tick it yourself' : 'no answer available from your profile',
-        })),
-      failed: fields
-        .filter((q) => q.fillResult && !q.fillResult.success)
-        .map((q) => ({ label: q.question, reason: q.fillResult?.error ?? 'not filled' })),
+      todo,
     };
+  }
+
+  /** What to draw on the page: green filled, amber double-check, red for required fields that still need the user. */
+  private buildMarks(): FieldMark[] {
+    const marks: FieldMark[] = [];
+    for (const q of this.questions) {
+      if (!q.fieldId) continue;
+      if (q.fillResult?.success) {
+        const doubt = q.generatedAnswer?.requiresReview && !q.fromProfile;
+        marks.push({
+          fieldId: q.fieldId,
+          kind: doubt ? 'check' : 'filled',
+          note: doubt ? 'Filled by ArziBaaz - please double-check' : 'Filled by ArziBaaz',
+        });
+      } else if (!q.currentValue && (q.required || q.fillResult)) {
+        marks.push({ fieldId: q.fieldId, kind: 'missing', note: 'ArziBaaz could not fill this - it needs you' });
+      }
+    }
+    return marks;
+  }
+
+  /** Remembers what we could not fill (labels only) so the user can answer once and developers can see the gaps. */
+  private async logGaps(summary: FillSummary) {
+    const gaps = summary.todo
+      .filter((t) => !t.consent)
+      .map((t) => ({
+        label: t.label,
+        canonicalField: t.canonicalField,
+        inputType: t.inputType,
+        reason: t.failed ? ('fill_failed' as const) : t.profileGap ? ('profile_missing' as const) : ('no_answer' as const),
+      }));
+    if (gaps.length === 0) return;
+
+    try {
+      const host = await this.activeHost();
+      await this.aiApi.recordFieldGaps(gaps.map((g) => ({ ...g, host })));
+    } catch {
+      // Gap logging is a convenience; never bother the user with it.
+    }
+  }
+
+  private async activeHost(): Promise<string | undefined> {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return tab?.url ? new URL(tab.url).hostname.replace(/^www\./, '') : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The user answers a field we could not fill: put it on the page now and remember it for next time. */
+  async saveAndFill(item: SummaryItem) {
+    const value = item.draft.trim();
+    const q = this.questions.find((x) => x.fieldId === item.fieldId);
+    if (!value || !q || item.saving) return;
+
+    item.saving = true;
+    item.error = undefined;
+    try {
+      const [result] = await this.formFill.fillApprovedFields([{ fieldId: item.fieldId, value, label: item.label }]);
+      if (!result?.success) {
+        item.error = result?.error ?? 'Could not fill this field.';
+        return;
+      }
+
+      q.fillResult = result;
+      q.currentValue = undefined;
+      q.generatedAnswer = {
+        questionId: q.id,
+        answer: value,
+        category: q.generatedAnswer?.category ?? 'unknown',
+        confidence: 1,
+        supportingFacts: [],
+        missingInformation: [],
+        requiresReview: false,
+      };
+      q.approved = true;
+
+      this.formFill.highlight([{ fieldId: item.fieldId, kind: 'filled', note: 'Filled by ArziBaaz' }]);
+      this.fillSummary.update((s) =>
+        s ? { ...s, filled: s.filled + 1, todo: s.todo.filter((t) => t !== item) } : s,
+      );
+
+      const saved = await this.rememberAnswer(q, value);
+      this.showToast(saved ? 'Filled, and saved for next time.' : 'Filled, but it could not be saved for next time.', !saved);
+    } finally {
+      item.saving = false;
+    }
+  }
+
+  /** Personal fields go to the profile; everything else becomes a saved answer matched by question text. */
+  private async rememberAnswer(q: QuestionItem, value: string): Promise<boolean> {
+    try {
+      const profileKey = q.canonicalField ? PROFILE_FIELD_KEYS[q.canonicalField] : undefined;
+      if (profileKey) {
+        await this.profileApi.updatePersonalProfile({ [profileKey]: value } as Partial<PersonalProfile>);
+        this.state.profile = { ...(this.state.profile ?? { fullName: '', email: '' }), [profileKey]: value } as PersonalProfile;
+      } else {
+        await this.aiApi.createLibraryAnswer(value, q.question, q.generatedAnswer?.category ?? 'unknown');
+      }
+      await this.aiApi.resolveFieldGap(q.question).catch(() => undefined);
+      return true;
+    } catch (error) {
+      console.warn('[ArziBaaz] Could not save the answer for next time:', error);
+      return false;
+    }
+  }
+
+  clearMarks() {
+    this.formFill.clearHighlights();
+  }
+
+  goToProfile() {
+    this.router.navigate(['/profile']);
+  }
+
+  private async loadReadiness() {
+    if (!this.auth.isAuthenticated()) return;
+    try {
+      const [full, facts] = await Promise.all([this.profileApi.getFullProfile(), this.profileApi.getFacts()]);
+      this.readiness.set({ facts: facts.length, skills: (full.skills ?? []).length });
+    } catch {
+      // Hint only; stay silent if the API is asleep or unreachable.
+    }
   }
 
   addQuestion() {

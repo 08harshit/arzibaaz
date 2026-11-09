@@ -22,6 +22,12 @@ Until it is applied:
 
 How: `supabase db push` for a linked project, or run the SQL in the Supabase SQL editor.
 
+## 1b. Migration 003 (field gaps) — apply it
+
+`supabase/migrations/003_field_gaps.sql` creates `field_gaps` (labels of form fields that could not be filled; never answers).
+Until it is applied, gap logging fails silently and the app works as before. The file ends with the developer backlog query
+(top missing fields across users, run with the service role).
+
 ## 2. Ashby form markup is still unverified (needs saved HTML)
 
 Verified by running the real extractor against live pages (throwaway jsdom check, not a committed test):
