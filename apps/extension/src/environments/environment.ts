@@ -1,6 +1,6 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3100/api/v1',
+  apiUrl: 'https://arzibaaz.onrender.com/api/v1',
   // Configure with your project's public Supabase URL and public anon key.
   // NEVER use service-role key in frontend code.
   supabaseUrl: 'https://uynwtnwlzskkafizyhne.supabase.co',
