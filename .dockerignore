@@ -1,0 +1,16 @@
+# Keep the build context small and keep secrets out of the image.
+**/node_modules
+**/dist
+**/.angular
+.git
+.github
+.claude
+**/.env
+**/.env.*
+!**/.env.example
+apps/extension
+docs
+supabase
+tests
+*.md
+**/*.log
