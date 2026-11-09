@@ -132,6 +132,7 @@ function extractField(el: HTMLElement, platform: ATSPlatform): ApplicationQuesti
       el.getAttribute('aria-required') === 'true' ||
       group.some((g) => g.required),
     options: extractOptions(el, group),
+    currentValue: readCurrentValue(el, group),
     nearbyText: getNearbyText(el),
     detectedQuestion: label,
     framework: detectFramework(el),
@@ -245,6 +246,40 @@ function extractOptions(el: HTMLElement, group: HTMLInputElement[]): string[] | 
     return labels.length ? labels : undefined;
   }
 
+  return undefined;
+}
+
+/** The value already in the field (typed by the user or pre-filled by the page), if any. */
+function readCurrentValue(el: HTMLElement, group: HTMLInputElement[]): string | undefined {
+  const clean = (text: string | null | undefined) => {
+    const t = (text ?? '').replace(/\s+/g, ' ').trim();
+    return t || undefined;
+  };
+
+  if (el instanceof HTMLSelectElement) {
+    const selected = el.selectedOptions[0];
+    return selected && selected.value !== '' ? clean(selected.text) : undefined;
+  }
+
+  if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox')) {
+    const checked = group.filter((g) => g.checked);
+    if (checked.length === 0) return undefined;
+    // A lone checkbox is a yes/no toggle; groups report the chosen option labels.
+    if (group.length === 1 && el.type === 'checkbox') return 'Yes';
+    return clean(checked.map((c) => optionLabelText(c) || c.value).join(', '));
+  }
+
+  // Custom dropdowns (React-Select etc.) show the choice in a sibling element, not in the input.
+  if (isCombobox(el)) {
+    const typed = el instanceof HTMLInputElement ? clean(el.value) : undefined;
+    if (typed) return typed;
+    const shown = el
+      .closest('.select__container, [class*="-container"], [class*="select"]')
+      ?.querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value"]');
+    return clean(shown?.textContent);
+  }
+
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return clean(el.value);
   return undefined;
 }
 

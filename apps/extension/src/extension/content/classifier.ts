@@ -106,7 +106,7 @@ function matchCanonicalField(text: string): ClassificationResult {
       confidence: 0.95,
     },
     {
-      patterns: ['portfolio', 'portfolio url', 'personal website'],
+      patterns: ['portfolio', 'portfolio url', 'personal website', 'personal site', 'website', 'web site'],
       canonicalField: 'portfolioUrl',
       category: 'personal_information',
       confidence: 0.90,
@@ -214,7 +214,7 @@ function matchCanonicalField(text: string): ClassificationResult {
       confidence: 0.82,
     },
     {
-      patterns: ['summary', 'professional summary', 'about', 'bio'],
+      patterns: ['summary', 'professional summary', 'about yourself', 'about you', 'bio'],
       canonicalField: 'summary',
       category: 'introduction',
       confidence: 0.78,

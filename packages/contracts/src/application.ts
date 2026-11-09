@@ -58,6 +58,8 @@ export interface ApplicationQuestion {
   ariaLabel?: string;
   required: boolean;
   options?: string[];
+  /** What is already in the field when the page was scanned (user-typed or pre-filled). */
+  currentValue?: string;
   nearbyText?: string;
   detectedQuestion?: string;
   canonicalField?: CanonicalField;

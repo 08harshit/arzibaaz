@@ -18,6 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard, AuthenticatedRequest } from '../auth/auth.guard';
+import { CamelCaseInterceptor } from '../../common/camel-case.interceptor';
 import { ProfileService } from './profile.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateWorkExperienceDto, UpdateWorkExperienceDto } from './dto/work-experience.dto';
@@ -31,6 +32,7 @@ import { ConfirmExtractedDto } from './dto/confirm-extracted.dto';
 @ApiTags('Profile')
 @ApiBearerAuth()
 @UseGuards(AuthGuard)
+@UseInterceptors(CamelCaseInterceptor)
 @Controller('profile')
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}

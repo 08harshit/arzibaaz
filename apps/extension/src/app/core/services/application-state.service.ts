@@ -1,10 +1,12 @@
 import { Injectable } from '@angular/core';
 import type {
   ApplicationQuestion,
+  Education,
   FieldFillResult,
   GeneratedAnswer,
   JobContext,
   LibrarySuggestion,
+  PersonalProfile,
 } from '@arzi-baaz/contracts';
 
 export interface QuestionItem {
@@ -16,6 +18,11 @@ export interface QuestionItem {
   elementType?: string;
   options?: string[];
   required?: boolean;
+  canonicalField?: string;
+  /** What the form field already contains when scanned (typed by the user or pre-filled). */
+  currentValue?: string;
+  /** The answer came straight from the user's profile, not the AI. */
+  fromProfile?: boolean;
   generatedAnswer?: GeneratedAnswer & { id?: string };
   isGenerating?: boolean;
   isRefining?: boolean;
@@ -38,6 +45,10 @@ export interface QuestionItem {
 export class ApplicationStateService {
   jobContext: JobContext | null = null;
   rawJobDescription = '';
+
+  profile: PersonalProfile | null = null;
+  education: Education[] = [];
+  profileLoaded = false;
 
   /** Set by Answer Review so the Application tab autofills when the user returns. */
   autofillOnReturn = false;
@@ -85,8 +96,40 @@ export class ApplicationStateService {
         elementType: f.elementType,
         options: f.options,
         required: f.required,
+        canonicalField: f.canonicalField,
+        currentValue: f.currentValue,
       });
     }
     return fresh.length;
+  }
+
+  /**
+   * The user's own value for a canonical field (name, email, links, education), straight from the
+   * profile. Returns undefined when the profile has nothing for it, so the AI path takes over.
+   */
+  profileValueFor(canonicalField: string | undefined): string | undefined {
+    const p = this.profile;
+    const edu = this.education[0];
+    const words = (p?.fullName ?? '').trim().split(/\s+/).filter(Boolean);
+
+    const values: Record<string, string | undefined> = {
+      firstName: words[0],
+      lastName: words.length > 1 ? words.slice(1).join(' ') : undefined,
+      fullName: words.join(' '),
+      email: p?.email,
+      phone: p?.phone,
+      location: p?.location,
+      country: p?.country,
+      linkedinUrl: p?.linkedinUrl,
+      githubUrl: p?.githubUrl,
+      portfolioUrl: p?.portfolioUrl,
+      university: edu?.institution,
+      highestQualification: edu?.degree,
+      fieldOfStudy: edu?.fieldOfStudy,
+      graduationYear: edu?.endDate,
+    };
+
+    const value = canonicalField ? values[canonicalField]?.trim() : undefined;
+    return value || undefined;
   }
 }

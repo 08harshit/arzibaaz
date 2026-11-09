@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { AiApiService } from '../../core/services/ai-api.service';
 import { FormFillService } from '../../core/services/form-fill.service';
+import { ProfileApiService } from '../../core/services/profile-api.service';
 import { ApplicationStateService, type QuestionItem } from '../../core/services/application-state.service';
 import { AuthComponent } from '../auth/auth.component';
 import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi-baaz/contracts';
@@ -149,6 +150,12 @@ import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi
                       @if (q.required) {
                         <span class="field-chip required">required</span>
                       }
+                      @if (q.fromProfile) {
+                        <span class="field-chip ok">from your profile</span>
+                      }
+                      @if (q.currentValue && !q.generatedAnswer) {
+                        <span class="field-chip ok" [title]="q.currentValue">already filled: {{ q.currentValue.length > 28 ? q.currentValue.slice(0, 28) + '...' : q.currentValue }}</span>
+                      }
                       @if (q.fillResult) {
                         <span class="field-chip" [class.ok]="q.fillResult.success" [class.err]="!q.fillResult.success"
                               [title]="q.fillResult.error || ''">
@@ -277,6 +284,9 @@ import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi
             </div>
 
             <div class="bulk-bar">
+              @if (hasAnyAnswers()) {
+                <button class="generate-btn" (click)="approveReviewed()" title="Approve answers that are not flagged for review">✓ Approve reviewed</button>
+              }
               @if (unansweredFieldCount() > 0) {
                 <button class="generate-btn" (click)="generateAll()" [disabled]="generatingAll()">
                   @if (generatingAll()) {
@@ -916,6 +926,7 @@ export class ApplicationComponent implements OnInit {
   readonly state = inject(ApplicationStateService);
   readonly formFill = inject(FormFillService);
   private readonly aiApi = inject(AiApiService);
+  private readonly profileApi = inject(ProfileApiService);
   private readonly router = inject(Router);
 
   readonly showJobInput = signal<boolean>(false);
@@ -950,7 +961,7 @@ export class ApplicationComponent implements OnInit {
       const added = this.state.addDetectedFields(this.formFill.detectedFields());
       if (added > 0) {
         this.showToast(`Found ${added} form field${added === 1 ? '' : 's'} on this page.`);
-        void this.loadSuggestions();
+        void this.applyProfileValues().then(() => this.loadSuggestions());
       }
     });
   }
@@ -974,7 +985,7 @@ export class ApplicationComponent implements OnInit {
   }
 
   unansweredFieldCount(): number {
-    return this.questions.filter((q) => q.fieldId && !q.generatedAnswer).length;
+    return this.questions.filter((q) => q.fieldId && !q.generatedAnswer && !q.currentValue).length;
   }
 
   toggleJobInput() {
@@ -1034,6 +1045,60 @@ export class ApplicationComponent implements OnInit {
     }
   }
 
+  /**
+   * Fills personal fields (name, email, links, education) straight from the profile instead of asking
+   * the AI, which only sees professional facts. Fields the user already filled on the page are left alone.
+   */
+  private async applyProfileValues() {
+    if (!this.auth.isAuthenticated()) return;
+
+    if (!this.state.profileLoaded) {
+      try {
+        const full = await this.profileApi.getFullProfile();
+        this.state.profile = full.profile ?? null;
+        this.state.education = full.education ?? [];
+        this.state.profileLoaded = true;
+      } catch {
+        return; // fall back to AI generation
+      }
+    }
+
+    // The sign-in email is always known, even before the profile is filled in.
+    const accountEmail = this.auth.user()?.email;
+    if (accountEmail && !this.state.profile?.email) {
+      this.state.profile = { ...(this.state.profile ?? { fullName: '', email: '' }), email: accountEmail };
+    }
+
+    for (const q of this.questions) {
+      if (!q.fieldId || q.generatedAnswer || q.currentValue) continue;
+      const value = this.state.profileValueFor(q.canonicalField);
+      if (!value) continue;
+
+      q.generatedAnswer = {
+        questionId: q.id,
+        answer: value,
+        category: 'personal_information',
+        confidence: 1,
+        supportingFacts: [],
+        missingInformation: [],
+        requiresReview: false,
+      };
+      q.fromProfile = true;
+    }
+  }
+
+  /** Approves every answer that is non-empty and does not need review, so only the doubtful ones stay manual. */
+  approveReviewed() {
+    let count = 0;
+    for (const q of this.questions) {
+      if (q.generatedAnswer?.answer.trim() && !q.generatedAnswer.requiresReview && !q.approved) {
+        q.approved = true;
+        count++;
+      }
+    }
+    this.showToast(count ? `Approved ${count} answer${count === 1 ? '' : 's'} that did not need review.` : 'Nothing to approve: the rest need your review.', count === 0);
+  }
+
   async useSuggestion(q: QuestionItem, suggestion: LibrarySuggestion) {
     q.isGenerating = true;
     try {
@@ -1083,7 +1148,7 @@ export class ApplicationComponent implements OnInit {
 
   /** Generates answers for every detected field that has none. */
   async generateAll() {
-    const targets = this.questions.filter((q) => q.fieldId && !q.generatedAnswer);
+    const targets = this.questions.filter((q) => q.fieldId && !q.generatedAnswer && !q.currentValue);
     if (targets.length === 0) return;
 
     this.generatingAll.set(true);
