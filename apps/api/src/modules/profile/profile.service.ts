@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../auth/supabase.service';
+import { AiService } from '../ai/ai.service';
 import { CvParserService } from './cv-parser.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateWorkExperienceDto, UpdateWorkExperienceDto } from './dto/work-experience.dto';
@@ -18,6 +19,7 @@ export class ProfileService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly cvParser: CvParserService,
+    private readonly ai: AiService,
   ) {}
 
   /**
@@ -115,10 +117,11 @@ export class ProfileService {
     this.logger.log(`Extracting CV: ${file.originalname} for user ${userId}`);
 
     // 1. Extract raw text from file
-    const rawText = await this.cvParser.extractText(file.buffer, file.mimetype);
+    const rawText = await this.cvParser.extractText(file.buffer, file.mimetype, file.originalname);
 
     // 2. Parse structured profile data and factual statements
-    const extracted = this.cvParser.parseCv(rawText);
+    const regexExtracted = this.cvParser.parseCv(rawText);
+    const extracted = await this.structureWithAi(rawText, regexExtracted);
 
     // 3. Store document reference in private user documents table
     const client = this.supabase.getAuthenticatedClient(accessToken);
@@ -144,6 +147,33 @@ export class ProfileService {
       documentId: doc?.id,
       ...extracted,
     };
+  }
+
+  /**
+   * Lets the AI structure the CV (names, institutions, dates, experience). The regex parser stays as the
+   * fallback and fills gaps (it is reliable for email and profile links), so a provider outage or rate limit
+   * never blocks CV upload.
+   */
+  private async structureWithAi(rawText: string, fallback: ExtractedProfileData): Promise<ExtractedProfileData> {
+    try {
+      // Bounded wait: provider retries can take long, and the upload should not hang on them.
+      const ai = await Promise.race([
+        this.ai.structureCv(rawText),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out after 25s')), 25_000)),
+      ]);
+      return {
+        ...fallback,
+        personal: { ...fallback.personal, ...ai.personal },
+        experiences: ai.experiences.length > 0 ? ai.experiences : fallback.experiences,
+        education: ai.education.length > 0 ? ai.education : fallback.education,
+        projects: ai.projects.length > 0 ? ai.projects : fallback.projects,
+        skills: ai.skills.length > 0 ? ai.skills : fallback.skills,
+        facts: ai.facts.length > 0 ? ai.facts : fallback.facts,
+      };
+    } catch (err) {
+      this.logger.warn(`AI CV structuring failed, using the basic parser: ${(err as Error).message}`);
+      return fallback;
+    }
   }
 
   /**

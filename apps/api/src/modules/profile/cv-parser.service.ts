@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import * as mammoth from 'mammoth';
+import { PDFParse } from 'pdf-parse';
 import type {
   ExtractedProfileData,
   PersonalProfile,
@@ -8,30 +10,64 @@ import type {
   SkillRecord,
 } from '@arzi-baaz/contracts';
 
-// pdf-parse import
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse');
-
 @Injectable()
 export class CvParserService {
   private readonly logger = new Logger(CvParserService.name);
 
   /**
-   * Extracts raw text from an uploaded file buffer (PDF or plain text).
+   * Extracts raw text from an uploaded CV: PDF, DOCX or plain text.
+   * Problems with the file itself are reported as 400s with a message the user can act on.
    */
-  async extractText(buffer: Buffer, mimeType: string): Promise<string> {
-    if (mimeType === 'application/pdf') {
-      try {
-        const parsed = await pdfParse(buffer);
-        return parsed.text || '';
-      } catch (err) {
-        this.logger.error('Failed to parse PDF text', err);
-        throw new Error('Could not parse PDF document. Please ensure it is a valid text-based PDF.');
-      }
+  async extractText(buffer: Buffer, mimeType: string, fileName = ''): Promise<string> {
+    const name = fileName.toLowerCase();
+    const isPdf = mimeType === 'application/pdf' || name.endsWith('.pdf');
+    const isDocx = mimeType.includes('wordprocessingml') || name.endsWith('.docx');
+    const isText = mimeType.startsWith('text/') || /.(txt|md|markdown)$/.test(name);
+
+    let text: string;
+    if (isPdf) {
+      text = await this.readPdf(buffer);
+    } else if (isDocx) {
+      text = await this.readDocx(buffer);
+    } else if (isText) {
+      text = buffer.toString('utf-8');
+    } else if (name.endsWith('.doc') || mimeType === 'application/msword') {
+      throw new BadRequestException('Old .doc files are not supported. Save the file as DOCX or PDF and upload it again.');
+    } else {
+      throw new BadRequestException('Unsupported file type. Upload a PDF, DOCX or TXT file.');
     }
 
-    // Default to UTF-8 text interpretation (for .txt, .md, etc.)
-    return buffer.toString('utf-8');
+    if (text.trim().length < 30) {
+      throw new BadRequestException(
+        isPdf
+          ? 'This PDF has no selectable text (it looks like a scan). Export a text-based PDF, or upload a DOCX or TXT file.'
+          : 'No readable text was found in this file.',
+      );
+    }
+    return text;
+  }
+
+  private async readPdf(buffer: Buffer): Promise<string> {
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      return result.text ?? '';
+    } catch (err) {
+      this.logger.error('Failed to parse PDF text', err);
+      throw new BadRequestException('Could not read this PDF. It may be password-protected or damaged.');
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  }
+
+  private async readDocx(buffer: Buffer): Promise<string> {
+    try {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value ?? '';
+    } catch (err) {
+      this.logger.error('Failed to parse DOCX text', err);
+      throw new BadRequestException('Could not read this DOCX file. It may be damaged.');
+    }
   }
 
   /**

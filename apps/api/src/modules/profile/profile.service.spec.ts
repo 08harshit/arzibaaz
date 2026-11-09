@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { ProfileService } from './profile.service';
 import { SupabaseService } from '../auth/supabase.service';
 import { CvParserService } from './cv-parser.service';
+import { AiService } from '../ai/ai.service';
 
 describe('ProfileService', () => {
   let service: ProfileService;
@@ -53,6 +54,7 @@ describe('ProfileService', () => {
     service = new ProfileService(
       supabaseMock as unknown as SupabaseService,
       cvParserMock as unknown as CvParserService,
+      { structureCv: vi.fn().mockRejectedValue(new Error('AI is not used in unit tests')) } as unknown as AiService,
     );
   });
 

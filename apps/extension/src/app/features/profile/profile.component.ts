@@ -131,13 +131,13 @@ type ActiveTab =
                 <div class="upload-box">
                   <div class="upload-icon">📑</div>
                   <h3>Upload Your Resume / CV</h3>
-                  <p class="upload-sub">Supports PDF, TXT, or Markdown documents (max 10MB)</p>
+                  <p class="upload-sub">Supports PDF, DOCX, TXT or Markdown (max 10MB). Scanned images are not supported.</p>
                   
                   <input
                     type="file"
                     #fileInput
                     (change)="onFileSelected($event)"
-                    accept=".pdf,.txt,.md"
+                    accept=".pdf,.docx,.txt,.md"
                     class="file-input"
                   />
 
@@ -1372,6 +1372,11 @@ export class ProfileComponent implements OnInit {
     if (!input.files || input.files.length === 0) return;
 
     const file = input.files[0];
+    if (file.size > 10 * 1024 * 1024) {
+      this.showToast('That file is larger than 10 MB. Upload a smaller PDF, DOCX or TXT file.', true);
+      input.value = '';
+      return;
+    }
     this.extracting.set(true);
 
     try {
@@ -1379,12 +1384,22 @@ export class ProfileComponent implements OnInit {
       this.extractedData = result;
       this.showToast('Document parsed successfully! Review the extracted details below.');
     } catch (err) {
-      this.showToast('Failed to parse CV. Ensure it is a valid PDF or text file.', true);
+      this.showToast(this.uploadErrorMessage(err), true);
       console.error(err);
     } finally {
       this.extracting.set(false);
       input.value = '';
     }
+  }
+
+  /** The API explains file problems (scanned PDF, wrong type...); show that instead of a generic failure. */
+  private uploadErrorMessage(err: unknown): string {
+    const e = err as { status?: number; error?: { message?: string | string[] } };
+    const serverMessage = Array.isArray(e?.error?.message) ? e.error?.message.join(' ') : e?.error?.message;
+    if (e?.status === 0) return 'Cannot reach the server. Check your connection and try again.';
+    if (e?.status === 429) return 'Too many uploads in a short time. Wait a minute and try again.';
+    if (e?.status === 401) return 'Your session expired. Sign in again.';
+    return serverMessage || 'Failed to read the CV. Upload a PDF, DOCX or TXT file.';
   }
 
   removeExtractedSkill(skillName: string) {

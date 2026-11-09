@@ -4,6 +4,7 @@ import { JOB_ANALYSIS_SYSTEM_PROMPT } from './prompts/job-analysis.prompt';
 import { QUESTION_CLASSIFICATION_SYSTEM_PROMPT } from './prompts/question-classification.prompt';
 import { ANSWER_GENERATION_SYSTEM_PROMPT } from './prompts/answer-generation.prompt';
 import { ANSWER_REFINEMENT_SYSTEM_PROMPT } from './prompts/answer-refinement.prompt';
+import { CV_EXTRACTION_SYSTEM_PROMPT } from './prompts/cv-extraction.prompt';
 import type {
   AnalyzeJobResponse,
   AnswerPreferences,
@@ -269,4 +270,88 @@ export class AiService {
       };
     }
   }
+
+  /**
+   * Structures the text of a CV into profile sections using the AI provider.
+   * Output is normalised defensively because the model's JSON is untrusted input.
+   */
+  async structureCv(rawText: string): Promise<CvStructure> {
+    // Keep the request within small free-tier token limits; the start of a CV carries the key facts.
+    const text = rawText.slice(0, 9_000);
+    const raw = await this.grok.completeJson<Record<string, unknown>>(
+      CV_EXTRACTION_SYSTEM_PROMPT,
+      JSON.stringify({ cvText: text }),
+    );
+
+    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const strs = (v: unknown, max = 30): string[] =>
+      Array.isArray(v) ? v.map(str).filter((s): s is string => !!s).slice(0, max) : [];
+    const list = (v: unknown, max: number): Record<string, unknown>[] =>
+      Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object').slice(0, max) : [];
+
+    const p = (raw.personal ?? {}) as Record<string, unknown>;
+    const personal: CvStructure['personal'] = {};
+    for (const key of ['fullName', 'email', 'phone', 'location', 'country', 'linkedinUrl', 'githubUrl', 'portfolioUrl', 'headline', 'summary'] as const) {
+      const value = str(p[key]);
+      if (value) personal[key] = value;
+    }
+
+    const experiences = list(raw.experiences, 12)
+      .map((e) => ({
+        company: str(e.company) ?? '',
+        role: str(e.role) ?? '',
+        employmentType: str(e.employmentType),
+        startDate: str(e.startDate),
+        endDate: str(e.endDate),
+        isCurrent: e.isCurrent === true,
+        responsibilities: strs(e.responsibilities),
+        technologies: strs(e.technologies),
+        achievements: strs(e.achievements),
+      }))
+      .filter((e) => e.company || e.role);
+
+    const education = list(raw.education, 6)
+      .map((e) => ({
+        institution: str(e.institution) ?? '',
+        degree: str(e.degree) ?? '',
+        fieldOfStudy: str(e.fieldOfStudy),
+        startDate: str(e.startDate),
+        endDate: str(e.endDate),
+      }))
+      .filter((e) => e.institution || e.degree);
+
+    const projects = list(raw.projects, 10)
+      .map((e) => ({
+        name: str(e.name) ?? '',
+        description: str(e.description) ?? '',
+        technologies: strs(e.technologies),
+        responsibilities: strs(e.responsibilities),
+        projectUrl: str(e.projectUrl),
+        githubUrl: str(e.githubUrl),
+      }))
+      .filter((e) => e.name);
+
+    const seen = new Set<string>();
+    const skills = list(raw.skills, 80)
+      .map((e) => str(e.name))
+      .filter((n): n is string => !!n && !seen.has(n.toLowerCase()) && !!seen.add(n.toLowerCase()))
+      .map((name) => ({ name, verified: false }));
+
+    const categories = ['skill', 'achievement', 'responsibility', 'project', 'experience', 'education', 'preference'] as const;
+    const facts = list(raw.facts, 40)
+      .map((f) => {
+        const category = categories.find((c) => c === f.category) ?? 'experience';
+        const confidence = typeof f.confidence === 'number' ? Math.min(1, Math.max(0, f.confidence)) : 0.9;
+        return { category, content: str(f.content) ?? '', confidence };
+      })
+      .filter((f) => f.content);
+
+    return { personal, experiences, education, projects, skills, facts };
+  }
 }
+
+/** CV content as structured by the AI provider (no raw text or document id). */
+export type CvStructure = Pick<
+  import('@arzi-baaz/contracts').ExtractedProfileData,
+  'personal' | 'experiences' | 'education' | 'projects' | 'skills' | 'facts'
+>;
