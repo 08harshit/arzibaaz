@@ -27,8 +27,9 @@ import type { QuestionCategory } from '@arzi-baaz/contracts';
 export class AnswersController {
   constructor(private readonly answersService: AnswersService) {}
 
+  // One-click form fill can request an answer per field, so this is higher than other AI routes.
   @Post('generate')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
     @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate a personalized answer for an application question' })
   async generate(@Req() req: AuthenticatedRequest, @Body() dto: GenerateAnswerDto) {
@@ -36,7 +37,7 @@ export class AnswersController {
   }
 
   @Post('refine')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
     @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refine an existing answer based on user instructions' })
   async refine(@Req() req: AuthenticatedRequest, @Body() dto: RefineAnswerDto) {

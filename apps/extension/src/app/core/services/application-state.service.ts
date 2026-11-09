@@ -61,6 +61,11 @@ export class ApplicationStateService {
     { id: 'q-default-2', question: 'Tell us about a challenging technical problem you solved.' },
   ];
 
+  /** Removes questions tied to form fields of a previous scan; hand-typed questions stay. */
+  resetFieldQuestions(): void {
+    this.questions = this.questions.filter((q) => !q.fieldId);
+  }
+
   hasAnyAnswers(): boolean {
     return this.questions.some((q) => !!q.generatedAnswer);
   }

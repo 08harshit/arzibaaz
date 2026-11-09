@@ -10,6 +10,15 @@ import { ApplicationStateService, type QuestionItem } from '../../core/services/
 import { AuthComponent } from '../auth/auth.component';
 import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi-baaz/contracts';
 
+interface FillSummary {
+  total: number;
+  filled: number;
+  alreadyFilled: number;
+  check: string[];
+  manual: Array<{ label: string; reason: string }>;
+  failed: Array<{ label: string; reason: string }>;
+}
+
 @Component({
   selector: 'ab-application',
   standalone: true,
@@ -69,27 +78,69 @@ import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi
           </div>
         }
 
-        <!-- Detect form fields on the active page -->
-        <div class="detect-card">
+        <!-- One-click fill -->
+        <div class="fill-card">
           <div class="detect-text">
-            <p class="detect-title">Fill the form on this page</p>
+            <p class="detect-title">Fill this application form</p>
             <p class="detect-hint">
-              @if (formFill.scanning()) {
-                Scanning the page and its frames...
+              @if (stage()) {
+                {{ stage() }}
               } @else {
-                Detect the application form's fields and answer them from your profile.
+                One click: finds the fields, uses your profile, writes the rest, and fills the page. Nothing is submitted.
               }
             </p>
           </div>
-          <button class="primary-btn" (click)="detectFields()" [disabled]="formFill.scanning()">
-            @if (formFill.scanning()) {
-              <span class="spinner-sm"></span>
+          <button class="primary-btn fill-btn" (click)="fillWholeForm()" [disabled]="filling()">
+            @if (filling()) {
+              <span class="spinner-sm"></span> Working...
             } @else {
-              🔍 Detect fields
+              ⚡ Fill this form
             }
           </button>
         </div>
 
+        @if (fillSummary(); as sum) {
+          <div class="summary-card">
+            <p class="sum-title">✓ Filled {{ sum.filled }} of {{ sum.total }} fields</p>
+            @if (sum.alreadyFilled > 0) {
+              <p class="sum-line">{{ sum.alreadyFilled }} already filled, left as they were.</p>
+            }
+            @if (sum.check.length > 0) {
+              <p class="sum-line warn">Double-check these (the AI was unsure):</p>
+              <ul>
+                @for (c of sum.check; track c) {
+                  <li>{{ c }}</li>
+                }
+              </ul>
+            }
+            @if (sum.manual.length > 0) {
+              <p class="sum-line">Fill these yourself:</p>
+              <ul>
+                @for (m of sum.manual; track m.label) {
+                  <li>{{ m.label }} <span class="why">- {{ m.reason }}</span></li>
+                }
+              </ul>
+            }
+            @if (sum.failed.length > 0) {
+              <p class="sum-line err">Could not fill:</p>
+              <ul>
+                @for (f of sum.failed; track f.label) {
+                  <li>{{ f.label }} <span class="why">- {{ f.reason }}</span></li>
+                }
+              </ul>
+            }
+            <p class="sum-note">Check the page, then submit it yourself.</p>
+          </div>
+        }
+
+        <div class="detail-toggle">
+          <button class="text-btn" (click)="showDetails.set(!showDetails())">
+            {{ showDetails() ? 'Hide' : 'Show' }} fields and manual tools
+          </button>
+          <button class="text-btn" (click)="detectFields()" [disabled]="formFill.scanning()">Detect only</button>
+        </div>
+
+        @if (showDetails()) {
         <!-- Add Question Input -->
         <div class="add-q-card">
           <div class="input-row">
@@ -311,6 +362,7 @@ import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi
             </div>
           }
         </div>
+        }
       }
     </div>
   `,
@@ -797,6 +849,36 @@ import type { GenerateAnswerRequest, JobContext, LibrarySuggestion } from '@arzi
       to { transform: rotate(360deg); }
     }
 
+    .fill-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(135deg, #e8f0fe 0%, #f0f7ff 100%);
+      border: 2px solid #1a73e8;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .fill-btn { padding: 9px 14px; font-size: 13px; white-space: nowrap; }
+
+    .summary-card {
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      color: #202124;
+    }
+    .sum-title { font-size: 14px; font-weight: 700; color: #137333; margin: 0 0 6px; }
+    .sum-line { margin: 6px 0 2px; font-weight: 600; }
+    .sum-line.warn { color: #b06000; }
+    .sum-line.err { color: #c5221f; }
+    .summary-card ul { margin: 0 0 0 16px; padding: 0; }
+    .summary-card li { margin: 2px 0; }
+    .why { color: #80868b; }
+    .sum-note { margin: 8px 0 0; color: #5f6368; font-size: 11px; }
+    .detail-toggle { display: flex; justify-content: space-between; }
+
     .detect-card {
       display: flex;
       justify-content: space-between;
@@ -935,6 +1017,10 @@ export class ApplicationComponent implements OnInit {
   readonly isError = signal<boolean>(false);
   readonly autofilling = signal<boolean>(false);
   readonly generatingAll = signal<boolean>(false);
+  readonly filling = signal<boolean>(false);
+  readonly stage = signal<string | null>(null);
+  readonly showDetails = signal<boolean>(false);
+  readonly fillSummary = signal<FillSummary | null>(null);
 
   newQuestionText = '';
 
@@ -961,7 +1047,7 @@ export class ApplicationComponent implements OnInit {
       const added = this.state.addDetectedFields(this.formFill.detectedFields());
       if (added > 0) {
         this.showToast(`Found ${added} form field${added === 1 ? '' : 's'} on this page.`);
-        void this.applyProfileValues().then(() => this.loadSuggestions());
+        void this.applyProfileValues().then(() => (this.filling() ? undefined : this.loadSuggestions()));
       }
     });
   }
@@ -1014,7 +1100,95 @@ export class ApplicationComponent implements OnInit {
   }
 
   detectFields() {
+    this.state.resetFieldQuestions();
+    this.fillSummary.set(null);
+    this.showDetails.set(true);
     this.formFill.triggerFormScan();
+  }
+
+  /** Consent and legal checkboxes are never ticked automatically; the user decides those. */
+  private isConsentField(q: QuestionItem): boolean {
+    return (
+      q.inputType === 'checkbox' &&
+      !q.options?.length &&
+      /(agree|consent|acknowledge|confirm|terms|privacy|policy|certify|authoriz|accept)/i.test(q.question)
+    );
+  }
+
+  /**
+   * One click: detect the form, take personal fields from the profile, write the rest with the AI,
+   * approve everything that has an answer, and fill the page. The form is never submitted.
+   */
+  async fillWholeForm() {
+    if (this.filling()) return;
+    this.filling.set(true);
+    this.fillSummary.set(null);
+
+    try {
+      this.stage.set('Detecting fields...');
+      this.state.resetFieldQuestions();
+      await this.formFill.scanForm();
+      this.state.addDetectedFields(this.formFill.detectedFields());
+
+      const fieldQuestions = () => this.questions.filter((q) => q.fieldId);
+      if (fieldQuestions().length === 0) {
+        this.showToast('No form fields found on this page. Open the application form and try again.', true);
+        return;
+      }
+
+      this.stage.set('Using your profile...');
+      await this.applyProfileValues();
+
+      const queue = fieldQuestions().filter((q) => !q.generatedAnswer && !q.currentValue && !this.isConsentField(q));
+      const total = queue.length;
+      let done = 0;
+      this.stage.set(total ? `Writing answers 0/${total}...` : 'Filling the form...');
+
+      // A few at a time: faster than one by one, gentle enough for the AI provider's rate limits.
+      const worker = async () => {
+        for (let q = queue.shift(); q; q = queue.shift()) {
+          await this.generateAnswer(q);
+          done++;
+          this.stage.set(`Writing answers ${done}/${total}...`);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+
+      for (const q of fieldQuestions()) {
+        if (q.generatedAnswer?.answer?.trim() && !this.isConsentField(q)) {
+          q.approved = true;
+          q.skipped = false;
+        }
+      }
+
+      this.stage.set('Filling the form...');
+      await this.autofillApproved();
+      this.fillSummary.set(this.buildSummary());
+    } finally {
+      this.filling.set(false);
+      this.stage.set(null);
+    }
+  }
+
+  private buildSummary(): FillSummary {
+    const fields = this.questions.filter((q) => q.fieldId);
+    const filled = fields.filter((q) => q.fillResult?.success);
+
+    return {
+      total: fields.length,
+      filled: filled.length,
+      alreadyFilled: fields.filter((q) => q.currentValue && !q.generatedAnswer).length,
+      check: filled.filter((q) => q.generatedAnswer?.requiresReview && !q.fromProfile).map((q) => q.question),
+      manual: fields
+        .filter((q) => !q.fillResult && !q.currentValue)
+        .map((q) => ({
+          label: q.question,
+          reason: this.isConsentField(q) ? 'consent: tick it yourself' : 'no answer available from your profile',
+        })),
+      failed: fields
+        .filter((q) => q.fillResult && !q.fillResult.success)
+        .map((q) => ({ label: q.question, reason: q.fillResult?.error ?? 'not filled' })),
+    };
   }
 
   addQuestion() {

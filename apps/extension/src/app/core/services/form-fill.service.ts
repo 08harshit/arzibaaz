@@ -30,6 +30,7 @@ export class FormFillService {
   readonly scanning = signal(false);
   readonly isFilling = signal(false);
 
+  private scanWaiters: Array<() => void> = [];
   private scanQuietTimer: ReturnType<typeof setTimeout> | null = null;
   private scanMaxTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -45,6 +46,13 @@ export class FormFillService {
       if (!isExtensionMessage(message)) return;
       this.zone.run(() => this.handleMessage(message as ExtensionMessage));
     });
+  }
+
+  /** Scans the page and resolves once results have stopped arriving from all frames. */
+  scanForm(): Promise<void> {
+    const done = new Promise<void>((resolve) => this.scanWaiters.push(resolve));
+    this.triggerFormScan();
+    return done;
   }
 
   /** Scans the active tab (all frames). Results stream into `detectedFields`. */
@@ -167,5 +175,8 @@ export class FormFillService {
     this.scanQuietTimer = null;
     this.scanMaxTimer = null;
     this.scanning.set(false);
+    const waiters = this.scanWaiters;
+    this.scanWaiters = [];
+    waiters.forEach((resolve) => resolve());
   }
 }
