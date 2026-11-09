@@ -1,0 +1,31 @@
+# Render Blueprint: in the Render dashboard choose New > Blueprint and pick this repo.
+# Render reads this file and creates the service; you only type the secrets below.
+
+services:
+  - type: web
+    name: arzibaaz-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      # AI provider (Groq's OpenAI-compatible endpoint)
+      - key: AI_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: XAI_MODEL
+        value: openai/gpt-oss-120b
+      # Public Supabase project URL (not a secret)
+      - key: SUPABASE_URL
+        value: https://uynwtnwlzskkafizyhne.supabase.co
+      # Secrets: Render prompts for these in the dashboard; never commit their values.
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
